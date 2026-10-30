@@ -1,0 +1,6 @@
+{
+  "name": "BD Education Board Result Portal",
+  "description": "Automated Bangladesh Education Board Examination Results portal with instant search, grade sheet verification, marksheet preview, and official printable transcript.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
