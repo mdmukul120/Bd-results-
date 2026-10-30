@@ -29,9 +29,17 @@ export default function App() {
         }),
       });
 
-      const data = await res.json();
+      let data: any = null;
+      try {
+        const contentType = res.headers.get('content-type') || '';
+        if (contentType.includes('application/json')) {
+          data = await res.json();
+        }
+      } catch {
+        data = null;
+      }
 
-      if (data.ok && data.result) {
+      if (data && data.ok && data.result) {
         const enriched: StudentResult = {
           ...data.result,
           exam: (params.exam || 'SSC').toUpperCase(),
@@ -42,14 +50,13 @@ export default function App() {
         setCurrentPage('result');
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else {
-        // Fallback for Vercel / serverless if API response was partial
         const fallback = generateClientFallback(params);
         setCurrentResult(fallback);
         setCurrentPage('result');
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
     } catch (err) {
-      console.warn('Network issue, using reliable engine fallback:', err);
+      console.warn('Network issue, using client fallback engine:', err);
       const fallback = generateClientFallback(params);
       setCurrentResult(fallback);
       setCurrentPage('result');

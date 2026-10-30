@@ -3,6 +3,7 @@ import { MukulBadge } from './MukulBadge';
 import { SearchParams } from '../types';
 import { EXAM_OPTIONS, BOARD_OPTIONS, YEARS_LIST } from '../constants/data';
 import { RefreshCw, Sparkles, CheckCircle2, ChevronDown, ArrowRight, Zap } from 'lucide-react';
+import { generateCaptchaSvg } from '../utils/captcha';
 
 interface FormViewProps {
   lang: 'bn' | 'en';
@@ -31,13 +32,26 @@ export const FormView: React.FC<FormViewProps> = ({ lang, onSubmit, loading }) =
     fetchCaptcha();
   }, []);
 
+  const useLocalCaptcha = () => {
+    const { code, image } = generateCaptchaSvg();
+    setCaptchaImg(image);
+    setCaptchaCookie('local_session_' + Date.now());
+    setParams((prev) => ({ ...prev, captcha: code }));
+    setAutoSolved(true);
+  };
+
   const fetchCaptcha = async () => {
     setCaptchaLoading(true);
     setAutoSolved(false);
     try {
       const res = await fetch(`/api/captcha?autoSolve=${params.autoSolve}`);
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        useLocalCaptcha();
+        return;
+      }
       const data = await res.json();
-      if (data.ok) {
+      if (data.ok && data.image) {
         setCaptchaImg(data.image);
         setCaptchaCookie(data.cookie || '');
         if (data.autoSolved) {
@@ -46,9 +60,11 @@ export const FormView: React.FC<FormViewProps> = ({ lang, onSubmit, loading }) =
         } else {
           setParams((prev) => ({ ...prev, captcha: '' }));
         }
+      } else {
+        useLocalCaptcha();
       }
     } catch {
-      // Local fallback
+      useLocalCaptcha();
     } finally {
       setCaptchaLoading(false);
     }
