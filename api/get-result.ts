@@ -2,15 +2,35 @@ export default async function handler(req: any, res: any) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
-  const body = req.body || {};
-  const { exam = 'ssc', year = '2024', board = 'dhaka', roll = '', reg = '' } = body;
+  // Parse body safely whether object, string, or parsed body
+  let body = req.body || {};
+  if (typeof body === 'string') {
+    try {
+      body = JSON.parse(body);
+    } catch {
+      body = {};
+    }
+  }
+
+  const {
+    exam = 'ssc',
+    year = '2024',
+    board = 'dhaka',
+    roll = '',
+    reg = '',
+    captcha = '',
+  } = body;
+  const cookie = body.cookie || '';
+
   const cleanRoll = String(roll).trim();
   const cleanReg = String(reg).trim();
+  const cleanCaptcha = String(captcha).trim();
 
   if (!cleanRoll) {
     return res.status(200).json({
@@ -20,13 +40,13 @@ export default async function handler(req: any, res: any) {
     });
   }
 
-  // 2026 Examination check: Explicitly indicate result not published yet
+  // 2026 Examination check: Explicitly notify that results are not published yet
   if (String(year) === '2026') {
     return res.status(200).json({
       ok: false,
       notPublished: true,
       error: '২০২৬ সালের পরীক্ষার ফলাফল এখনো প্রকাশিত হয়নি। শিক্ষা বোর্ড কর্তৃক ফলাফল প্রকাশের পর এখান থেকে ফলাফল দেখা যাবে।',
-      errorEn: 'Result for 2026 examination has not been published yet. Please try again after the official publication.',
+      errorEn: 'Result for 2026 examination has not been published yet. Please try again after official publication.',
     });
   }
 
@@ -40,25 +60,28 @@ export default async function handler(req: any, res: any) {
     formParams.append('result_type', '1');
     formParams.append('roll', cleanRoll);
     if (cleanReg) formParams.append('reg', cleanReg);
-    formParams.append('captcha', body.captcha || '1234');
+    formParams.append('captcha', cleanCaptcha);
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8500);
+    const timer = setTimeout(() => controller.abort(), 7500);
 
     const govPostRes = await fetch(`${EBR_BASE_URL}/v2/getres`, {
       method: 'POST',
       signal: controller.signal,
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Cookie': body.cookie || '',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Cookie': cookie || '',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
         'Referer': `${EBR_BASE_URL}/v2/home`,
+        'Origin': EBR_BASE_URL,
+        'Cache-Control': 'no-cache',
       },
       body: formParams.toString(),
     });
-    clearTimeout(timeout);
+    clearTimeout(timer);
 
     const govData: any = await govPostRes.json().catch(() => null);
+
     if (govData && govData.res && typeof govData.res === 'object' && govData.res.name) {
       const parsedSubjects = parseGovSubjects(govData.res.display_details, govData.sub_details || govData.sub);
       const realStudent = {
@@ -83,7 +106,7 @@ export default async function handler(req: any, res: any) {
       if (govData.msg.includes('Incorrect registration number')) {
         bnMsg = 'রেজিস্ট্রেশন নম্বর বা রোল নম্বর সঠিক নয়। অনুগ্রহ করে প্রবেশপত্র (Admit Card) অনুযায়ী সঠিক তথ্য দিয়ে আবার চেষ্টা করুন।';
       } else if (govData.msg.includes('Could not validate your provided Security Key')) {
-        bnMsg = 'নিরাপত্তা কোড (CAPTCHA) মিলেনি। অনুগ্রহ করে নতুন কোড দিয়ে পুনরায় চেষ্টা করুন।';
+        bnMsg = 'নিরাপত্তা কোড (CAPTCHA) মিলেনি। ছবিতে প্রদর্শিত ৪টি সংখ্যা সঠিকভাবে লিখুন।';
       } else if (govData.msg.includes('Result not found') || govData.msg.includes('not published')) {
         bnMsg = `${year} সালের এই রোল নম্বরের কোনো ফলাফল পাওয়া যায়নি অথবা ফলাফল এখনো প্রকাশিত হয়নি।`;
       }
@@ -97,9 +120,9 @@ export default async function handler(req: any, res: any) {
 
     return res.status(200).json({
       ok: false,
-      error: 'প্রদত্ত তথ্য অনুযায়ী শিক্ষা বোর্ডে কোনো ফলাফল খুঁজে পাওয়া যায়নি। রোল, রেজি এবং বোর্ড সঠিক কিনা যাচাই করুন।',
+      error: 'শিক্ষা বোর্ড সার্ভার থেকে কোনো ফলাফল পাওয়া যায়নি। অনুগ্রহ করে রোল, রেজি এবং বোর্ড সঠিক কিনা যাচাই করুন।',
     });
-  } catch (err: any) {
+  } catch {
     return res.status(200).json({
       ok: false,
       error: 'শিক্ষা বোর্ড সার্ভারে সংযোগ করা সম্ভব হয়নি। অনুগ্রহ করে কিছুক্ষণ পর পুনরায় চেষ্টা করুন।',

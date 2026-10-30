@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { MukulBadge } from './MukulBadge';
 import { SearchParams } from '../types';
 import { EXAM_OPTIONS, BOARD_OPTIONS, YEARS_LIST } from '../constants/data';
-import { RefreshCw, Sparkles, ChevronDown, ArrowRight, AlertCircle, Info } from 'lucide-react';
-import { generateCaptchaSvg } from '../utils/captcha';
+import { RefreshCw, Sparkles, ChevronDown, ArrowRight, AlertCircle, Info, ShieldCheck } from 'lucide-react';
 
 interface FormViewProps {
   lang: 'bn' | 'en';
@@ -34,52 +33,54 @@ export const FormView: React.FC<FormViewProps> = ({
   const [captchaImg, setCaptchaImg] = useState<string>('');
   const [captchaCookie, setCaptchaCookie] = useState<string>('');
   const [captchaLoading, setCaptchaLoading] = useState<boolean>(false);
+  const [captchaFailed, setCaptchaFailed] = useState<boolean>(false);
   const [autoSolved, setAutoSolved] = useState<boolean>(false);
 
   useEffect(() => {
     fetchCaptcha();
   }, []);
 
-  // When error message changes (e.g. invalid captcha or mismatched roll), refresh captcha
+  // When an error occurs on submission (e.g. invalid captcha or roll mismatch), automatically refresh captcha
   useEffect(() => {
     if (errorMessage) {
       fetchCaptcha();
     }
   }, [errorMessage]);
 
-  const useLocalCaptcha = () => {
-    const { code, image } = generateCaptchaSvg();
-    setCaptchaImg(image);
-    setCaptchaCookie('local_session_' + Date.now());
-    setParams((prev) => ({ ...prev, captcha: code }));
-    setAutoSolved(true);
-  };
-
   const fetchCaptcha = async () => {
     setCaptchaLoading(true);
+    setCaptchaFailed(false);
     setAutoSolved(false);
+
     try {
-      const res = await fetch(`/api/captcha?autoSolve=${params.autoSolve}`);
+      const res = await fetch('/api/captcha', {
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
+
       const contentType = res.headers.get('content-type') || '';
       if (!contentType.includes('application/json')) {
-        useLocalCaptcha();
-        return;
+        throw new Error('Non-JSON response from serverless endpoint');
       }
+
       const data = await res.json();
       if (data.ok && data.image) {
         setCaptchaImg(data.image);
         setCaptchaCookie(data.cookie || '');
-        if (data.autoSolved) {
+
+        if (data.autoSolved && String(data.autoSolved).length === 4) {
           setParams((prev) => ({ ...prev, captcha: data.autoSolved }));
           setAutoSolved(true);
         } else {
           setParams((prev) => ({ ...prev, captcha: '' }));
+          setAutoSolved(false);
         }
       } else {
-        useLocalCaptcha();
+        setCaptchaFailed(true);
       }
     } catch {
-      useLocalCaptcha();
+      setCaptchaFailed(true);
     } finally {
       setCaptchaLoading(false);
     }
@@ -89,6 +90,10 @@ export const FormView: React.FC<FormViewProps> = ({
     e.preventDefault();
     if (!params.roll.trim()) {
       alert(lang === 'bn' ? 'অনুগ্রহ করে রোল নম্বর প্রদান করুন।' : 'Please enter your Roll Number.');
+      return;
+    }
+    if (!params.captcha.trim()) {
+      alert(lang === 'bn' ? 'অনুগ্রহ করে ছবিতে প্রদর্শিত ৪টি সংখ্যা লিখুন।' : 'Please enter the 4 digits from the security image.');
       return;
     }
     onSubmit(params, captchaCookie);
@@ -293,27 +298,47 @@ export const FormView: React.FC<FormViewProps> = ({
                   />
                 </div>
 
-                {/* Security CAPTCHA Box */}
+                {/* Official Security CAPTCHA Box */}
                 <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
                   <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-slate-700">
-                      {lang === 'bn' ? 'রোবট প্রতিরোধ কোড' : 'Security Code'}
+                    <span className="font-bold text-slate-700 flex items-center gap-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-[#006a4e]" />
+                      {lang === 'bn' ? 'নিরাপত্তা কোড (Security Code)' : 'Security Code (CAPTCHA)'}
                     </span>
-                    {autoSolved && (
-                      <span className="text-[11px] font-bold text-[#006a4e] flex items-center gap-1">
-                        <Sparkles className="w-3 h-3 text-amber-500" />
+                    {autoSolved ? (
+                      <span className="text-[11px] font-bold text-[#006a4e] flex items-center gap-1 bg-emerald-100/80 px-2 py-0.5 rounded-full">
+                        <Sparkles className="w-3 h-3 text-amber-500 animate-pulse" />
                         {lang === 'bn' ? 'এআই সমাধানকৃত' : 'AI Solved'}
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-medium text-slate-500">
+                        {lang === 'bn' ? 'ছবি দেখে লিখুন' : 'Enter 4 digits'}
                       </span>
                     )}
                   </div>
 
                   <div className="flex items-center gap-2.5">
-                    {/* Captcha Image */}
-                    <div className="h-10 w-28 bg-white border border-slate-300 rounded-lg flex items-center justify-center overflow-hidden">
+                    {/* Captcha Image Display */}
+                    <div className="h-11 w-32 bg-white border-2 border-slate-300 rounded-xl flex items-center justify-center overflow-hidden relative shadow-inner">
                       {captchaLoading ? (
-                        <RefreshCw className="w-4 h-4 animate-spin text-[#006a4e]" />
+                        <div className="flex items-center gap-1 text-slate-400 text-xs">
+                          <RefreshCw className="w-4 h-4 animate-spin text-[#006a4e]" />
+                        </div>
+                      ) : captchaFailed ? (
+                        <button
+                          type="button"
+                          onClick={fetchCaptcha}
+                          className="w-full h-full bg-red-50 hover:bg-red-100 text-red-700 text-[11px] font-bold flex items-center justify-center gap-1 px-1 text-center transition cursor-pointer"
+                        >
+                          <RefreshCw className="w-3.5 h-3.5" />
+                          <span>{lang === 'bn' ? 'রিলোড করুন' : 'Retry'}</span>
+                        </button>
                       ) : captchaImg ? (
-                        <img src={captchaImg} alt="Captcha" className="h-full object-contain" />
+                        <img
+                          src={captchaImg}
+                          alt="Government Board Captcha"
+                          className="w-full h-full object-contain select-none"
+                        />
                       ) : (
                         <span className="text-xs text-slate-400 font-mono">1234</span>
                       )}
@@ -324,32 +349,40 @@ export const FormView: React.FC<FormViewProps> = ({
                       type="button"
                       onClick={fetchCaptcha}
                       disabled={captchaLoading}
-                      className="p-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg transition cursor-pointer"
-                      title="নতুন কোড"
+                      className="p-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl transition cursor-pointer disabled:opacity-50"
+                      title={lang === 'bn' ? 'নতুন কোড আনুন' : 'Reload Code'}
                     >
-                      <RefreshCw className={`w-4 h-4 ${captchaLoading ? 'animate-spin' : ''}`} />
+                      <RefreshCw className={`w-4 h-4 ${captchaLoading ? 'animate-spin text-[#006a4e]' : ''}`} />
                     </button>
 
                     {/* Input */}
                     <input
                       type="text"
-                      maxLength={6}
-                      placeholder="৪ সংখ্যা"
+                      maxLength={4}
+                      placeholder={lang === 'bn' ? '৪ সংখ্যা' : '4 digits'}
                       value={params.captcha}
                       onChange={(e) => {
                         setParams({ ...params, captcha: e.target.value.replace(/\D/g, '') });
+                        setAutoSolved(false);
                         if (onClearError) onClearError();
                       }}
-                      className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-bold text-center tracking-widest text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#006a4e]"
+                      className="flex-1 bg-white border border-slate-300 rounded-xl px-3 py-2 text-base font-black text-center tracking-widest text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#006a4e]"
                       required
                     />
+                  </div>
+                  
+                  {/* Subtle guidance text under captcha */}
+                  <div className="text-[11px] text-slate-500 font-medium">
+                    {autoSolved
+                      ? (lang === 'bn' ? '✓ ছবিতে থাকা ৪টি সংখ্যা স্বয়ংক্রিয়ভাবে বসেছে' : '✓ Digits verified automatically')
+                      : (lang === 'bn' ? 'বামের ছবিতে প্রদর্শিত ৪টি সংখ্যা ঘরে লিখুন' : 'Type the 4 digits shown in the image')}
                   </div>
                 </div>
 
                 {/* Submit Button */}
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || captchaLoading}
                   className="w-full mt-2 py-3.5 px-6 rounded-2xl bg-[#006a4e] hover:bg-[#00523c] active:scale-[0.99] text-white font-extrabold text-base shadow-lg shadow-emerald-900/20 hover:shadow-xl transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                 >
                   {loading ? (
