@@ -12,6 +12,24 @@ export default async function handler(req: any, res: any) {
   const cleanRoll = String(roll).trim();
   const cleanReg = String(reg).trim();
 
+  if (!cleanRoll) {
+    return res.status(200).json({
+      ok: false,
+      error: 'রোল নম্বর প্রদান করা আবশ্যক।',
+      errorEn: 'Roll number is required.',
+    });
+  }
+
+  // 2026 Examination check: Explicitly indicate result not published yet
+  if (String(year) === '2026') {
+    return res.status(200).json({
+      ok: false,
+      notPublished: true,
+      error: '২০২৬ সালের পরীক্ষার ফলাফল এখনো প্রকাশিত হয়নি। শিক্ষা বোর্ড কর্তৃক ফলাফল প্রকাশের পর এখান থেকে ফলাফল দেখা যাবে।',
+      errorEn: 'Result for 2026 examination has not been published yet. Please try again after the official publication.',
+    });
+  }
+
   const EBR_BASE_URL = 'https://educationboardresults.gov.bd';
 
   try {
@@ -25,7 +43,7 @@ export default async function handler(req: any, res: any) {
     formParams.append('captcha', body.captcha || '1234');
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3500);
+    const timeout = setTimeout(() => controller.abort(), 8500);
 
     const govPostRes = await fetch(`${EBR_BASE_URL}/v2/getres`, {
       method: 'POST',
@@ -34,69 +52,144 @@ export default async function handler(req: any, res: any) {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Cookie': body.cookie || '',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': `${EBR_BASE_URL}/v2/home`,
       },
       body: formParams.toString(),
     });
     clearTimeout(timeout);
 
     const govData: any = await govPostRes.json().catch(() => null);
-    if (govData && govData.res && govData.res.name) {
-      return res.status(200).json({ ok: true, result: govData.res, source: 'gov_direct' });
+    if (govData && govData.res && typeof govData.res === 'object' && govData.res.name) {
+      const parsedSubjects = parseGovSubjects(govData.res.display_details, govData.sub_details || govData.sub);
+      const realStudent = {
+        ...govData.res,
+        roll: govData.res.roll_no || govData.res.roll || cleanRoll,
+        regno: govData.res.regno || cleanReg,
+        exam: exam.toUpperCase(),
+        year: String(year),
+        board_name: (govData.res.board_name || board).toUpperCase(),
+        sub_details: parsedSubjects.length > 0 ? parsedSubjects : undefined,
+      };
+
+      return res.status(200).json({
+        ok: true,
+        result: realStudent,
+        source: 'gov_direct',
+      });
     }
-  } catch {
-    // Government server error or timeout
+
+    if (govData && govData.msg) {
+      let bnMsg = govData.msg;
+      if (govData.msg.includes('Incorrect registration number')) {
+        bnMsg = 'রেজিস্ট্রেশন নম্বর বা রোল নম্বর সঠিক নয়। অনুগ্রহ করে প্রবেশপত্র (Admit Card) অনুযায়ী সঠিক তথ্য দিয়ে আবার চেষ্টা করুন।';
+      } else if (govData.msg.includes('Could not validate your provided Security Key')) {
+        bnMsg = 'নিরাপত্তা কোড (CAPTCHA) মিলেনি। অনুগ্রহ করে নতুন কোড দিয়ে পুনরায় চেষ্টা করুন।';
+      } else if (govData.msg.includes('Result not found') || govData.msg.includes('not published')) {
+        bnMsg = `${year} সালের এই রোল নম্বরের কোনো ফলাফল পাওয়া যায়নি অথবা ফলাফল এখনো প্রকাশিত হয়নি।`;
+      }
+
+      return res.status(200).json({
+        ok: false,
+        error: bnMsg,
+        govMsg: govData.msg,
+      });
+    }
+
+    return res.status(200).json({
+      ok: false,
+      error: 'প্রদত্ত তথ্য অনুযায়ী শিক্ষা বোর্ডে কোনো ফলাফল খুঁজে পাওয়া যায়নি। রোল, রেজি এবং বোর্ড সঠিক কিনা যাচাই করুন।',
+    });
+  } catch (err: any) {
+    return res.status(200).json({
+      ok: false,
+      error: 'শিক্ষা বোর্ড সার্ভারে সংযোগ করা সম্ভব হয়নি। অনুগ্রহ করে কিছুক্ষণ পর পুনরায় চেষ্টা করুন।',
+    });
   }
-
-  // Guaranteed realistic authentic result output
-  const result = generateRealisticResult({
-    exam,
-    year,
-    board,
-    roll: cleanRoll || '100101',
-    reg: cleanReg || '1910' + (cleanRoll || '100101').padStart(6, '0'),
-  });
-
-  return res.status(200).json({ ok: true, result, source: 'smart_engine' });
 }
 
-function generateRealisticResult(params: { exam: string; year: string; board: string; roll: string; reg: string }) {
-  const seed = parseInt(params.roll.slice(-4) || '1234', 10);
-  const isMale = seed % 2 === 0;
-  const names = ['MD. RAKIBUL ISLAM', 'NUSRAT JAHAN', 'MD. TANVIR AHMED', 'SADIA AFRIN', 'SAKIB AL HASAN', 'MST. SUMAIYA AKTER'];
-  const name = names[seed % names.length];
-  const boardUpper = (params.board || 'DHAKA').toUpperCase();
-  const examUpper = (params.exam || 'SSC').toUpperCase();
+function parseGovSubjects(displayDetails?: string, subDict?: any[]): any[] {
+  if (!displayDetails || typeof displayDetails !== 'string') return [];
+  const subjects: any[] = [];
+  const items = displayDetails.split(',');
 
-  return {
-    roll: params.roll,
-    regno: params.reg,
-    name,
-    fname: 'MD. ABDUL KARIM',
-    mname: 'NASIMA BEGUM',
-    board_name: boardUpper,
-    session: `${parseInt(params.year) - 2}-${(parseInt(params.year) - 1).toString().slice(-2)}`,
-    stud_group: 'SCIENCE',
-    stud_type: 'Regular',
-    stud_sex: isMale ? 'Male' : 'Female',
-    gpa: '5.00',
-    res_detail: 'Passed',
-    dob: '12-05-2007',
-    eiin: '108154',
-    inst_name: 'NOTRE DAME COLLEGE, DHAKA',
-    center: 'DHAKA - 12',
-    exam: examUpper,
-    year: params.year,
-    status: 0,
-    sub_details: [
-      { code: '101', name: 'BANGLA', theory: '86', mcq: '28', practical: '-', total: '114', grade: 'A+', point: '5.0' },
-      { code: '107', name: 'ENGLISH', theory: '84', mcq: '-', practical: '-', total: '84', grade: 'A+', point: '5.0' },
-      { code: '109', name: 'MATHEMATICS', theory: '68', mcq: '29', practical: '-', total: '97', grade: 'A+', point: '5.0' },
-      { code: '136', name: 'PHYSICS', theory: '48', mcq: '23', practical: '25', total: '96', grade: 'A+', point: '5.0' },
-      { code: '137', name: 'CHEMISTRY', theory: '47', mcq: '24', practical: '24', total: '95', grade: 'A+', point: '5.0' },
-      { code: '138', name: 'BIOLOGY', theory: '46', mcq: '24', practical: '25', total: '95', grade: 'A+', point: '5.0' },
-      { code: '126', name: 'HIGHER MATHEMATICS', theory: '49', mcq: '24', practical: '25', total: '98', grade: 'A+', point: '5.0' },
-      { code: '154', name: 'ICT', theory: '23', mcq: '23', practical: '25', total: '71', grade: 'A+', point: '5.0' },
-      { code: '150', name: 'BANGLADESH & GLOBAL STUDIES', theory: '65', mcq: '27', practical: '-', total: '92', grade: 'A+', point: '5.0' },
-    ],
+  const subjectNames: Record<string, string> = {
+    '101': 'BANGLA',
+    '102': 'BANGLA II',
+    '107': 'ENGLISH',
+    '108': 'ENGLISH II',
+    '109': 'MATHEMATICS',
+    '111': 'ISLAM & MORAL EDUCATION',
+    '112': 'HINDU RELIGION',
+    '113': 'BUDDHIST RELIGION',
+    '114': 'CHRISTIAN RELIGION',
+    '126': 'HIGHER MATHEMATICS',
+    '134': 'AGRICULTURE STUDIES',
+    '136': 'PHYSICS',
+    '137': 'CHEMISTRY',
+    '138': 'BIOLOGY',
+    '140': 'HISTORY OF BANGLADESH',
+    '141': 'CIVICS & CITIZENSHIP',
+    '146': 'ACCOUNTING',
+    '147': 'BUSINESS ENTREPRENEURSHIP',
+    '149': 'FINANCE & BANKING',
+    '150': 'BANGLADESH & GLOBAL STUDIES',
+    '154': 'INFORMATION & COMM. TECH.',
   };
+
+  if (Array.isArray(subDict)) {
+    subDict.forEach((s: any) => {
+      if (s.SUB_CODE && s.SUB_NAME) {
+        subjectNames[String(s.SUB_CODE)] = s.SUB_NAME;
+      }
+    });
+  }
+
+  for (const item of items) {
+    const parts = item.split(':');
+    if (parts.length < 2) continue;
+    const code = parts[0].trim();
+    const resultPart = parts[1].trim();
+    const resTokens = resultPart.split('=');
+    const grade = resTokens[resTokens.length - 1]?.trim() || '';
+    let total = '';
+    let theory = '';
+    let practical = '';
+    let mcq = '';
+
+    if (resTokens.length > 2) {
+      const details = resTokens[0];
+      total = resTokens[1];
+      const mSplit = details.split('+');
+      if (mSplit.length >= 3) {
+        theory = mSplit[0];
+        practical = mSplit[1];
+        mcq = mSplit[2];
+      }
+    } else if (resTokens.length > 1) {
+      total = resTokens[0];
+    }
+
+    const gpMap: Record<string, string> = {
+      'A+': '5.0',
+      'A': '4.0',
+      'A-': '3.5',
+      'B': '3.0',
+      'C': '2.0',
+      'D': '1.0',
+      'F': '0.0',
+    };
+
+    subjects.push({
+      code,
+      name: subjectNames[code] || `SUBJECT (${code})`,
+      theory: theory || '-',
+      mcq: mcq || '-',
+      practical: practical || '-',
+      total: total || '-',
+      grade,
+      point: gpMap[grade] || '-',
+    });
+  }
+
+  return subjects;
 }

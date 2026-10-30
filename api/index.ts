@@ -91,59 +91,26 @@ app.post('/api/get-result', async (req, res) => {
     if (govData && govData.res && govData.res.name) {
       return res.json({ ok: true, result: govData.res });
     }
+
+    if (govData && govData.msg) {
+      let bnMsg = govData.msg;
+      if (govData.msg.includes('Incorrect registration number')) {
+        bnMsg = 'রেজিস্ট্রেশন নম্বর বা রোল নম্বর সঠিক নয়। অনুগ্রহ করে প্রবেশপত্র অনুযায়ী সঠিক তথ্য প্রদান করুন।';
+      } else if (govData.msg.includes('Could not validate your provided Security Key')) {
+        bnMsg = 'নিরাপত্তা কোড (CAPTCHA) মিলেনি। পুনরায় চেষ্টা করুন।';
+      } else if (govData.msg.includes('Result not found') || govData.msg.includes('not published')) {
+        bnMsg = `${year} সালের এই রোল নম্বরের কোনো ফলাফল পাওয়া যায়নি অথবা ফলাফল এখনো প্রকাশিত হয়নি।`;
+      }
+      return res.json({ ok: false, error: bnMsg, govMsg: govData.msg });
+    }
   } catch {
-    // fallback
+    // network issue
   }
 
-  // Realistic mock / fallback
-  const fallback = generateRealisticResult({
-    exam,
-    year,
-    board,
-    roll: cleanRoll,
-    reg: cleanReg || '1910' + cleanRoll.padStart(6, '0'),
+  res.json({
+    ok: false,
+    error: 'প্রদত্ত তথ্য অনুযায়ী শিক্ষা বোর্ডে কোনো ফলাফল পাওয়া যায়নি। রোল, রেজি এবং বোর্ড যাচাই করুন।',
   });
-
-  res.json({ ok: true, result: fallback, fallback: true });
 });
-
-function generateRealisticResult(params: { exam: string; year: string; board: string; roll: string; reg: string }) {
-  const seed = parseInt(params.roll.slice(-4) || '1234', 10);
-  const isMale = seed % 2 === 0;
-  const names = ['MD. RAKIBUL ISLAM', 'NUSRAT JAHAN', 'MD. TANVIR AHMED', 'SADIA AFRIN', 'SAKIB AL HASAN', 'MST. SUMAIYA AKTER'];
-  const name = names[seed % names.length];
-
-  return {
-    roll: params.roll,
-    regno: params.reg,
-    name,
-    fname: 'MD. ABDUL KARIM',
-    mname: 'NASIMA BEGUM',
-    board_name: params.board.toUpperCase(),
-    session: `${parseInt(params.year) - 2}-${(parseInt(params.year) - 1).toString().slice(-2)}`,
-    stud_group: 'SCIENCE',
-    stud_type: 'Regular',
-    stud_sex: isMale ? 'Male' : 'Female',
-    gpa: '5.00',
-    res_detail: 'Passed',
-    dob: '12-05-2007',
-    eiin: '108154',
-    inst_name: 'NOTRE DAME COLLEGE, DHAKA',
-    center: 'DHAKA - 12',
-    exam: params.exam.toUpperCase(),
-    year: params.year,
-    sub_details: [
-      { code: '101', name: 'BANGLA', theory: '86', mcq: '28', practical: '-', total: '114', grade: 'A+', point: '5.0' },
-      { code: '107', name: 'ENGLISH', theory: '84', mcq: '-', practical: '-', total: '84', grade: 'A+', point: '5.0' },
-      { code: '109', name: 'MATHEMATICS', theory: '68', mcq: '29', practical: '-', total: '97', grade: 'A+', point: '5.0' },
-      { code: '136', name: 'PHYSICS', theory: '48', mcq: '23', practical: '25', total: '96', grade: 'A+', point: '5.0' },
-      { code: '137', name: 'CHEMISTRY', theory: '47', mcq: '24', practical: '24', total: '95', grade: 'A+', point: '5.0' },
-      { code: '138', name: 'BIOLOGY', theory: '46', mcq: '24', practical: '25', total: '95', grade: 'A+', point: '5.0' },
-      { code: '126', name: 'HIGHER MATHEMATICS', theory: '49', mcq: '24', practical: '25', total: '98', grade: 'A+', point: '5.0' },
-      { code: '154', name: 'ICT', theory: '23', mcq: '23', practical: '25', total: '71', grade: 'A+', point: '5.0' },
-      { code: '150', name: 'BANGLADESH & GLOBAL STUDIES', theory: '65', mcq: '27', practical: '-', total: '92', grade: 'A+', point: '5.0' },
-    ],
-  };
-}
 
 export default app;

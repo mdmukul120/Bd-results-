@@ -2,16 +2,24 @@ import React, { useState, useEffect } from 'react';
 import { MukulBadge } from './MukulBadge';
 import { SearchParams } from '../types';
 import { EXAM_OPTIONS, BOARD_OPTIONS, YEARS_LIST } from '../constants/data';
-import { RefreshCw, Sparkles, CheckCircle2, ChevronDown, ArrowRight, Zap } from 'lucide-react';
+import { RefreshCw, Sparkles, ChevronDown, ArrowRight, AlertCircle, Info } from 'lucide-react';
 import { generateCaptchaSvg } from '../utils/captcha';
 
 interface FormViewProps {
   lang: 'bn' | 'en';
   onSubmit: (params: SearchParams, cookie?: string) => Promise<void>;
   loading: boolean;
+  errorMessage?: string | null;
+  onClearError?: () => void;
 }
 
-export const FormView: React.FC<FormViewProps> = ({ lang, onSubmit, loading }) => {
+export const FormView: React.FC<FormViewProps> = ({
+  lang,
+  onSubmit,
+  loading,
+  errorMessage,
+  onClearError,
+}) => {
   const [params, setParams] = useState<SearchParams>({
     exam: 'ssc',
     year: '2024',
@@ -31,6 +39,13 @@ export const FormView: React.FC<FormViewProps> = ({ lang, onSubmit, loading }) =
   useEffect(() => {
     fetchCaptcha();
   }, []);
+
+  // When error message changes (e.g. invalid captcha or mismatched roll), refresh captcha
+  useEffect(() => {
+    if (errorMessage) {
+      fetchCaptcha();
+    }
+  }, [errorMessage]);
 
   const useLocalCaptcha = () => {
     const { code, image } = generateCaptchaSvg();
@@ -70,15 +85,6 @@ export const FormView: React.FC<FormViewProps> = ({ lang, onSubmit, loading }) =
     }
   };
 
-  const handleQuickDemo = (demoRoll: string, demoReg: string, demoBoard: string) => {
-    setParams((prev) => ({
-      ...prev,
-      roll: demoRoll,
-      reg: demoReg,
-      board: demoBoard,
-    }));
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!params.roll.trim()) {
@@ -102,7 +108,6 @@ export const FormView: React.FC<FormViewProps> = ({ lang, onSubmit, loading }) =
           {/* Left Column: Character pointing right */}
           <div className="lg:col-span-5 flex flex-col items-center justify-center text-center order-2 lg:order-1">
             <div className="relative max-w-[280px] sm:max-w-[340px] lg:max-w-full">
-              {/* Character PNG pointing right towards form */}
               <img
                 src="/assets/aistudio/student_pointing_right_710ff94d.png"
                 alt="Student pointing at form"
@@ -112,34 +117,16 @@ export const FormView: React.FC<FormViewProps> = ({ lang, onSubmit, loading }) =
               <div className="w-44 h-4 bg-emerald-950/15 rounded-[100%] mx-auto blur-[2px] -mt-2"></div>
             </div>
 
-            {/* Quick demo pills */}
-            <div className="mt-5 w-full max-w-sm">
-              <span className="text-[11px] font-bold text-[#006a4e] uppercase tracking-wider block mb-2">
-                {lang === 'bn' ? '⚡ টেস্ট করতে রোল বাছাই করুন:' : '⚡ Quick Test Roll:'}
+            {/* Official Portal Notice */}
+            <div className="mt-4 text-center max-w-xs">
+              <span className="text-xs font-bold text-[#006a4e]">
+                {lang === 'bn' ? 'শিক্ষা বোর্ড ফলাফল অনুসন্ধান' : 'Official BD Board Result'}
               </span>
-              <div className="flex flex-wrap items-center justify-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => handleQuickDemo('100101', '1910654321', 'dhaka')}
-                  className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-white/90 hover:bg-[#006a4e] text-slate-800 hover:text-white border border-emerald-200 transition shadow-xs cursor-pointer"
-                >
-                  ঢাকা (বিজ্ঞান)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickDemo('200202', '1910778899', 'rajshahi')}
-                  className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-white/90 hover:bg-[#006a4e] text-slate-800 hover:text-white border border-emerald-200 transition shadow-xs cursor-pointer"
-                >
-                  রাজশাহী (মানবিক)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleQuickDemo('400404', '1910114477', 'madrasah')}
-                  className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-white/90 hover:bg-[#006a4e] text-slate-800 hover:text-white border border-emerald-200 transition shadow-xs cursor-pointer"
-                >
-                  দাখিল (মাদ্রাসা)
-                </button>
-              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {lang === 'bn'
+                  ? 'প্রবেশপত্র অনুযায়ী সঠিক রোল ও রেজিস্ট্রেশন নম্বর দিন'
+                  : 'Enter correct Roll & Registration as per Admit Card'}
+              </p>
             </div>
           </div>
 
@@ -154,7 +141,7 @@ export const FormView: React.FC<FormViewProps> = ({ lang, onSubmit, loading }) =
             {/* Pristine Form Card */}
             <div className="w-full bg-white rounded-3xl p-6 sm:p-8 md:p-9 shadow-xl border border-emerald-100/80 transition-all">
               
-              <div className="mb-6 text-center lg:text-left">
+              <div className="mb-5 text-center lg:text-left">
                 <h1 className="text-2xl sm:text-3xl font-black text-[#006a4e] tracking-tight">
                   {lang === 'bn' ? 'ফলাফল দেখুন' : 'View Examination Result'}
                 </h1>
@@ -165,6 +152,31 @@ export const FormView: React.FC<FormViewProps> = ({ lang, onSubmit, loading }) =
                 </p>
               </div>
 
+              {/* Error Notice Banner */}
+              {errorMessage && (
+                <div className="mb-4 p-3.5 bg-red-50 border-2 border-red-200 rounded-2xl flex items-start gap-3 text-red-800 text-xs sm:text-sm animate-in fade-in">
+                  <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <span className="font-bold block mb-0.5">
+                      {lang === 'bn' ? 'তথ্য পাওয়া যায়নি / ভুল হয়েছে:' : 'Verification Notice:'}
+                    </span>
+                    <span className="leading-relaxed font-medium">{errorMessage}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* 2026 Year Unpublished Live Warning */}
+              {params.year === '2026' && !errorMessage && (
+                <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-2xl flex items-center gap-2.5 text-amber-800 text-xs">
+                  <Info className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                  <span>
+                    {lang === 'bn'
+                      ? 'বিজ্ঞপ্তি: ২০২৬ সালের পরীক্ষার ফলাফল এখনো প্রকাশিত হয়নি।'
+                      : 'Notice: 2026 examination results have not been published yet.'}
+                  </span>
+                </div>
+              )}
+
               <form onSubmit={handleSubmit} className="space-y-4">
                 {/* Examination Dropdown */}
                 <div>
@@ -174,7 +186,10 @@ export const FormView: React.FC<FormViewProps> = ({ lang, onSubmit, loading }) =
                   <div className="relative">
                     <select
                       value={params.exam}
-                      onChange={(e) => setParams({ ...params, exam: e.target.value })}
+                      onChange={(e) => {
+                        setParams({ ...params, exam: e.target.value });
+                        if (onClearError) onClearError();
+                      }}
                       className="w-full appearance-none bg-slate-50 hover:bg-slate-100/80 border border-slate-300 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#006a4e] focus:bg-white transition cursor-pointer pr-10"
                     >
                       {EXAM_OPTIONS.map((opt) => (
@@ -197,12 +212,15 @@ export const FormView: React.FC<FormViewProps> = ({ lang, onSubmit, loading }) =
                     <div className="relative">
                       <select
                         value={params.year}
-                        onChange={(e) => setParams({ ...params, year: e.target.value })}
+                        onChange={(e) => {
+                          setParams({ ...params, year: e.target.value });
+                          if (onClearError) onClearError();
+                        }}
                         className="w-full appearance-none bg-slate-50 hover:bg-slate-100/80 border border-slate-300 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#006a4e] focus:bg-white transition cursor-pointer pr-10"
                       >
                         {YEARS_LIST.map((yr) => (
                           <option key={yr} value={yr}>
-                            {yr}
+                            {yr} {yr === '2026' ? (lang === 'bn' ? '(অপ্রকাশিত)' : '(Unpublished)') : ''}
                           </option>
                         ))}
                       </select>
@@ -218,7 +236,10 @@ export const FormView: React.FC<FormViewProps> = ({ lang, onSubmit, loading }) =
                     <div className="relative">
                       <select
                         value={params.board}
-                        onChange={(e) => setParams({ ...params, board: e.target.value })}
+                        onChange={(e) => {
+                          setParams({ ...params, board: e.target.value });
+                          if (onClearError) onClearError();
+                        }}
                         className="w-full appearance-none bg-slate-50 hover:bg-slate-100/80 border border-slate-300 rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#006a4e] focus:bg-white transition cursor-pointer pr-10"
                       >
                         {BOARD_OPTIONS.map((b) => (
@@ -243,7 +264,10 @@ export const FormView: React.FC<FormViewProps> = ({ lang, onSubmit, loading }) =
                     maxLength={8}
                     placeholder={lang === 'bn' ? 'যেমন: 123456' : 'e.g. 123456'}
                     value={params.roll}
-                    onChange={(e) => setParams({ ...params, roll: e.target.value.replace(/\D/g, '') })}
+                    onChange={(e) => {
+                      setParams({ ...params, roll: e.target.value.replace(/\D/g, '') });
+                      if (onClearError) onClearError();
+                    }}
                     className="w-full bg-slate-50 focus:bg-white border border-slate-300 rounded-xl px-4 py-2.5 text-sm font-semibold tracking-wider text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#006a4e] focus:border-[#006a4e] transition"
                     required
                   />
@@ -253,17 +277,19 @@ export const FormView: React.FC<FormViewProps> = ({ lang, onSubmit, loading }) =
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1.5">
                     {lang === 'bn' ? 'রেজিস্ট্রেশন নম্বর (Reg No)' : 'Registration Number'}
-                    <span className="text-slate-400 font-normal ml-1">
-                      ({lang === 'bn' ? 'মার্কশিটের জন্য' : 'Optional'})
-                    </span>
+                    <span className="text-[#f42a41] ml-1">*</span>
                   </label>
                   <input
                     type="text"
                     maxLength={10}
                     placeholder={lang === 'bn' ? 'যেমন: 1234567890' : 'e.g. 1234567890'}
                     value={params.reg}
-                    onChange={(e) => setParams({ ...params, reg: e.target.value.replace(/\D/g, '') })}
+                    onChange={(e) => {
+                      setParams({ ...params, reg: e.target.value.replace(/\D/g, '') });
+                      if (onClearError) onClearError();
+                    }}
                     className="w-full bg-slate-50 focus:bg-white border border-slate-300 rounded-xl px-4 py-2.5 text-sm font-semibold tracking-wider text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#006a4e] focus:border-[#006a4e] transition"
+                    required
                   />
                 </div>
 
@@ -310,8 +336,12 @@ export const FormView: React.FC<FormViewProps> = ({ lang, onSubmit, loading }) =
                       maxLength={6}
                       placeholder="৪ সংখ্যা"
                       value={params.captcha}
-                      onChange={(e) => setParams({ ...params, captcha: e.target.value.replace(/\D/g, '') })}
+                      onChange={(e) => {
+                        setParams({ ...params, captcha: e.target.value.replace(/\D/g, '') });
+                        if (onClearError) onClearError();
+                      }}
                       className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm font-bold text-center tracking-widest text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#006a4e]"
+                      required
                     />
                   </div>
                 </div>
@@ -325,7 +355,7 @@ export const FormView: React.FC<FormViewProps> = ({ lang, onSubmit, loading }) =
                   {loading ? (
                     <>
                       <RefreshCw className="w-5 h-5 animate-spin" />
-                      <span>{lang === 'bn' ? 'লোড হচ্ছে...' : 'Fetching Result...'}</span>
+                      <span>{lang === 'bn' ? 'যাচাই করা হচ্ছে...' : 'Verifying Result...'}</span>
                     </>
                   ) : (
                     <>

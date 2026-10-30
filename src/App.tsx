@@ -14,9 +14,23 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState<'form' | 'result'>('form');
   const [currentResult, setCurrentResult] = useState<StudentResult | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleFormSubmit = async (params: SearchParams, cookie?: string) => {
     setLoading(true);
+    setErrorMessage(null);
+
+    // 1. Direct validation: 2026 results are not published
+    if (params.year === '2026') {
+      setLoading(false);
+      setErrorMessage(
+        lang === 'bn'
+          ? '২০২৬ সালের পরীক্ষার ফলাফল এখনো প্রকাশিত হয়নি। শিক্ষা বোর্ড কর্তৃক ফলাফল প্রকাশের পর এখান থেকে ফলাফল দেখা যাবে।'
+          : 'Result for 2026 examination has not been published yet. Please try again after official publication.'
+      );
+      return;
+    }
+
     try {
       const res = await fetch('/api/get-result', {
         method: 'POST',
@@ -48,19 +62,22 @@ export default function App() {
         };
         setCurrentResult(enriched);
         setCurrentPage('result');
+        setErrorMessage(null);
         window.scrollTo({ top: 0, behavior: 'smooth' });
       } else {
-        const fallback = generateClientFallback(params);
-        setCurrentResult(fallback);
-        setCurrentPage('result');
-        window.scrollTo({ top: 0, behavior: 'smooth' });
+        // Authentic error from government server
+        const msg = data?.error || (lang === 'bn'
+          ? 'রোল বা রেজিস্ট্রেশন নম্বর মিলেনি। অনুগ্রহ করে প্রবেশপত্র (Admit Card) অনুযায়ী সঠিক তথ্য প্রদান করুন।'
+          : 'Roll or registration number did not match. Please verify your Admit Card and try again.');
+        setErrorMessage(msg);
       }
     } catch (err) {
-      console.warn('Network issue, using client fallback engine:', err);
-      const fallback = generateClientFallback(params);
-      setCurrentResult(fallback);
-      setCurrentPage('result');
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      console.error('Fetch error:', err);
+      setErrorMessage(
+        lang === 'bn'
+          ? 'শিক্ষা বোর্ড সার্ভারে সংযোগ করা যায়নি। অনুগ্রহ করে কিছুক্ষণ পর পুনরায় চেষ্টা করুন।'
+          : 'Could not connect to the education board server. Please try again later.'
+      );
     } finally {
       setLoading(false);
     }
@@ -68,6 +85,7 @@ export default function App() {
 
   const handleBackToSearch = () => {
     setCurrentPage('form');
+    setErrorMessage(null);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -83,6 +101,8 @@ export default function App() {
             lang={lang}
             onSubmit={handleFormSubmit}
             loading={loading}
+            errorMessage={errorMessage}
+            onClearError={() => setErrorMessage(null)}
           />
         ) : currentResult ? (
           <ResultPageView
@@ -93,53 +113,10 @@ export default function App() {
         ) : null}
       </main>
 
-      {/* No unnecessary clutter, minimal developer signature footnote */}
+      {/* Developer signature footnote */}
       <div className="py-2.5 text-center text-[11px] text-slate-400 font-medium no-print">
         Designed with ❤️ by <span className="text-[#006a4e] font-bold">Mukul Developer</span> • বাংলাদেশ শিক্ষা বোর্ড
       </div>
     </div>
   );
-}
-
-// Client-side fallback generator ensuring 100% resilience on Vercel deployment
-function generateClientFallback(params: SearchParams): StudentResult {
-  const seed = parseInt(params.roll.slice(-4) || '1234', 10);
-  const isMale = seed % 2 === 0;
-  const names = ['MD. RAKIBUL ISLAM', 'NUSRAT JAHAN', 'MD. TANVIR AHMED', 'SADIA AFRIN', 'SAKIB AL HASAN', 'MST. SUMAIYA AKTER'];
-  const name = names[seed % names.length];
-  const boardUpper = (params.board || 'DHAKA').toUpperCase();
-  const examUpper = (params.exam || 'SSC').toUpperCase();
-
-  return {
-    roll: params.roll || '123456',
-    regno: params.reg || '1910' + (params.roll || '123456').padStart(6, '0'),
-    name,
-    fname: 'MD. ABDUL KARIM',
-    mname: 'NASIMA BEGUM',
-    board_name: boardUpper,
-    session: `${parseInt(params.year || '2024') - 2}-${(parseInt(params.year || '2024') - 1).toString().slice(-2)}`,
-    stud_group: 'SCIENCE',
-    stud_type: 'Regular',
-    stud_sex: isMale ? 'Male' : 'Female',
-    gpa: '5.00',
-    res_detail: 'Passed',
-    dob: '12-05-2007',
-    eiin: '108154',
-    inst_name: 'NOTRE DAME COLLEGE, DHAKA',
-    center: 'DHAKA - 12',
-    exam: examUpper,
-    year: params.year || '2024',
-    status: 0,
-    sub_details: [
-      { code: '101', name: 'BANGLA', theory: '86', mcq: '28', practical: '-', total: '114', grade: 'A+', point: '5.0' },
-      { code: '107', name: 'ENGLISH', theory: '84', mcq: '-', practical: '-', total: '84', grade: 'A+', point: '5.0' },
-      { code: '109', name: 'MATHEMATICS', theory: '68', mcq: '29', practical: '-', total: '97', grade: 'A+', point: '5.0' },
-      { code: '136', name: 'PHYSICS', theory: '48', mcq: '23', practical: '25', total: '96', grade: 'A+', point: '5.0' },
-      { code: '137', name: 'CHEMISTRY', theory: '47', mcq: '24', practical: '24', total: '95', grade: 'A+', point: '5.0' },
-      { code: '138', name: 'BIOLOGY', theory: '46', mcq: '24', practical: '25', total: '95', grade: 'A+', point: '5.0' },
-      { code: '126', name: 'HIGHER MATHEMATICS', theory: '49', mcq: '24', practical: '25', total: '98', grade: 'A+', point: '5.0' },
-      { code: '154', name: 'ICT', theory: '23', mcq: '23', practical: '25', total: '71', grade: 'A+', point: '5.0' },
-      { code: '150', name: 'BANGLADESH & GLOBAL STUDIES', theory: '65', mcq: '27', practical: '-', total: '92', grade: 'A+', point: '5.0' },
-    ],
-  };
 }
