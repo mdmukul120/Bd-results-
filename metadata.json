@@ -1,6 +1,6 @@
 {
-  "name": "BD Education Board Result Portal",
-  "description": "Automated Bangladesh Education Board Examination Results portal with instant search, grade sheet verification, marksheet preview, and official printable transcript.",
+  "name": "BD Result – Bangladesh Education Board Result Portal",
+  "description": "Check Bangladesh Education Board exam results for SSC, HSC, Dakhil, and Vocational. Instant marksheet, GPA lookup, and printable transcript verification.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
